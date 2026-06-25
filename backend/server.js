@@ -11,7 +11,7 @@ const app = express();
 // Middleware - CORS for production
 const allowedOrigins = [
   'http://localhost:3000',           // Local development
-  'https://yourfrontend.vercel.app'  // Will update this after frontend deploy
+  'https://code-doc-generator-vert.vercel.app/'  // Will update this after frontend deploy
 ];
 
 app.use(cors({
