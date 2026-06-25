@@ -10,8 +10,8 @@ const app = express();
 // Middleware
 // Middleware - CORS for production
 const allowedOrigins = [
-  'http://localhost:3000',           // Local development
-  'https://code-doc-generator-vert.vercel.app/'  // Will update this after frontend deploy
+  'http://localhost:3000',
+  'https://code-doc-generator-vert.vercel.app'  // Add this exact URL
 ];
 
 app.use(cors({
