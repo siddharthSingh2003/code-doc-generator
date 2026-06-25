@@ -3,6 +3,8 @@ import Editor from "@monaco-editor/react";
 import axios from "axios";
 import "./App.css";
 
+const API_URL = process.env.REACT_APP_API_URL;
+
 // Debounce helper function
 const debounce = (func, delay) => {
   let timeoutId;
