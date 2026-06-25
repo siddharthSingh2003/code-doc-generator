@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import Editor from "@monaco-editor/react";
 import axios from "axios";
 import "./App.css";
+// eslint-disable-next-line no-unused-vars
 
 const API_URL = process.env.REACT_APP_API_URL;
 
