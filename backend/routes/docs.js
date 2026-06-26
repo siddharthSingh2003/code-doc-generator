@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const Documentation = require('../models/Documentation');
+const verifyToken = require('../middleware/auth');
 const {
   generateDocumentation,
   generateComments,
   generateREADME
 } = require('../services/aiService');
-// const archiver = require('archiver');
 
 // Validate code input
 const validateCode = (code) => {
@@ -15,12 +15,11 @@ const validateCode = (code) => {
   }
 };
 
-// POST: Generate Documentation
-router.post('/generate-docs', async (req, res) => {
+// ✅ POST: Generate Documentation (user-specific)
+router.post('/generate-docs', verifyToken, async (req, res) => {
   try {
     const { code, language, projectName } = req.body;
 
-    // Validation
     if (!code || !language) {
       return res.status(400).json({ error: 'Code and language are required' });
     }
@@ -31,12 +30,11 @@ router.post('/generate-docs', async (req, res) => {
       return res.status(400).json({ error: 'Unsupported language' });
     }
 
-    // Generate documentation using AI
     console.log('Generating documentation...');
     const documentation = await generateDocumentation(code, language);
 
-    // Save to database
     const doc = new Documentation({
+      userId: req.userId,  // ✅ Associate with user
       code,
       language: language.toLowerCase(),
       projectName: projectName || 'Untitled Project',
@@ -58,12 +56,11 @@ router.post('/generate-docs', async (req, res) => {
   }
 });
 
-// POST: Generate Comments
-router.post('/generate-comments', async (req, res) => {
+// ✅ POST: Generate Comments
+router.post('/generate-comments', verifyToken, async (req, res) => {
   try {
     const { code, language } = req.body;
 
-    // Validation
     if (!code || !language) {
       return res.status(400).json({ error: 'Code and language are required' });
     }
@@ -74,7 +71,6 @@ router.post('/generate-comments', async (req, res) => {
       return res.status(400).json({ error: 'Unsupported language' });
     }
 
-    // Generate comments using AI
     console.log('Generating comments...');
     const comments = await generateComments(code, language);
 
@@ -89,12 +85,11 @@ router.post('/generate-comments', async (req, res) => {
   }
 });
 
-// POST: Generate README
-router.post('/generate-readme', async (req, res) => {
+// ✅ POST: Generate README
+router.post('/generate-readme', verifyToken, async (req, res) => {
   try {
     const { code, language, projectName } = req.body;
 
-    // Validation
     if (!code || !language || !projectName) {
       return res.status(400).json({
         error: 'Code, language, and projectName are required'
@@ -107,7 +102,6 @@ router.post('/generate-readme', async (req, res) => {
       return res.status(400).json({ error: 'Unsupported language' });
     }
 
-    // Generate README using AI
     console.log('Generating README...');
     const readme = await generateREADME(code, language, projectName);
 
@@ -122,30 +116,10 @@ router.post('/generate-readme', async (req, res) => {
   }
 });
 
-// GET: Retrieve documentation by ID
-router.get('/docs/:id', async (req, res) => {
+// ✅ GET: Retrieve all user's documentations
+router.get('/docs', verifyToken, async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const doc = await Documentation.findById(id);
-    if (!doc) {
-      return res.status(404).json({ error: 'Documentation not found' });
-    }
-
-    res.json({
-      success: true,
-      data: doc
-    });
-  } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// GET: Retrieve all documentations (last 10)
-router.get('/docs', async (req, res) => {
-  try {
-    const docs = await Documentation.find()
+    const docs = await Documentation.find({ userId: req.userId })  // ✅ Filter by user
       .sort({ createdAt: -1 })
       .limit(10);
 
@@ -160,13 +134,40 @@ router.get('/docs', async (req, res) => {
   }
 });
 
-// DELETE: Delete documentation by ID
-router.delete('/docs/:id', async (req, res) => {
+// ✅ GET: Retrieve specific documentation by ID
+router.get('/docs/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if document exists
-    const doc = await Documentation.findByIdAndDelete(id);
+    const doc = await Documentation.findOne({
+      _id: id,
+      userId: req.userId  // ✅ Only return if user owns it
+    });
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Documentation not found' });
+    }
+
+    res.json({
+      success: true,
+      data: doc
+    });
+  } catch (error) {
+    console.error('Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ✅ DELETE: Delete documentation by ID
+router.delete('/docs/:id', verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const doc = await Documentation.findOneAndDelete({
+      _id: id,
+      userId: req.userId  // ✅ Only delete if user owns it
+    });
+
     if (!doc) {
       return res.status(404).json({ error: 'Documentation not found' });
     }
@@ -182,14 +183,17 @@ router.delete('/docs/:id', async (req, res) => {
   }
 });
 
-// PUT: Update documentation (add new outputs to existing)
-router.put('/docs/:id', async (req, res) => {
+// ✅ PUT: Update documentation
+router.put('/docs/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { documentation, comments, readme } = req.body;
 
-    const doc = await Documentation.findByIdAndUpdate(
-      id,
+    const doc = await Documentation.findOneAndUpdate(
+      {
+        _id: id,
+        userId: req.userId  // ✅ Only update if user owns it
+      },
       {
         ...(documentation && { documentation }),
         ...(comments && { comments }),
@@ -214,33 +218,27 @@ router.put('/docs/:id', async (req, res) => {
   }
 });
 
-// GET: Search documentation by language
-// GET: Search/filter documentation with pagination
-router.get('/search', async (req, res) => {
+// ✅ GET: Search user's documentations
+router.get('/search', verifyToken, async (req, res) => {
   try {
     const { language, projectName, page = 1, limit = 10 } = req.query;
-    
-    // Build query object dynamically
-    let query = {};
-    
+
+    let query = { userId: req.userId };  // ✅ Filter by user
+
     if (language) {
       query.language = language.toLowerCase();
     }
-    
+
     if (projectName) {
       query.projectName = {
         $regex: projectName,
-        $options: 'i'  // Case-insensitive
+        $options: 'i'
       };
     }
 
-    // Calculate skip for pagination
     const skip = (page - 1) * limit;
-
-    // Get total count for pagination info
     const total = await Documentation.countDocuments(query);
 
-    // Find with pagination
     const docs = await Documentation.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -260,11 +258,16 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// GET: Get stats (count by language)
-router.get('/stats', async (req, res) => {
+// ✅ GET: Get stats for user's documentations
+router.get('/stats', verifyToken, async (req, res) => {
   try {
-    // Group by language and count
+    const mongoose = require('mongoose');
     const stats = await Documentation.aggregate([
+      {
+        $match: { 
+          userId: new mongoose.Types.ObjectId(req.userId)  // ✅ FIXED
+        }
+      },
       {
         $group: {
           _id: '$language',
@@ -286,12 +289,12 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// GET: Export all documentations as JSON
-// GET: Export all documentations as JSON
-router.get('/docs/export/json', async (req, res) => {
+// ✅ GET: Export user's documentations as JSON
+router.get('/docs/export/json', verifyToken, async (req, res) => {
   try {
-    const docs = await Documentation.find().sort({ createdAt: -1 });
-    
+    const docs = await Documentation.find({ userId: req.userId })  // ✅ Filter by user
+      .sort({ createdAt: -1 });
+
     if (docs.length === 0) {
       return res.status(404).json({ error: 'No documentations to export' });
     }
@@ -312,7 +315,6 @@ router.get('/docs/export/json', async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="documentation-export.json"');
     res.send(JSON.stringify(exportData, null, 2));
-
   } catch (error) {
     console.error('Export error:', error);
     res.status(500).json({ error: error.message });
@@ -320,6 +322,3 @@ router.get('/docs/export/json', async (req, res) => {
 });
 
 module.exports = router;
-
-
-

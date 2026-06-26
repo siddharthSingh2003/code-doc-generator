@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 
 const documentationSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'User ID is required']
+    },
     code: {
       type: String,
       required: [true, 'Code is required'],

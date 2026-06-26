@@ -1,18 +1,62 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useContext,
+  useMemo,
+} from "react";
 import Editor from "@monaco-editor/react";
 import axios from "axios";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import { UserProvider, UserContext } from "./UserContext";
+import Login from "./pages/Login";
 import "./App.css";
 
-// eslint-disable-next-line no-unused-vars
-const API_URL = process.env.REACT_APP_API_URL;
-
-// Debounce helper function
 const debounce = (func, delay) => {
   let timeoutId;
   return (...args) => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func(...args), delay);
   };
+};
+
+const RootApp = () => {
+  return (
+    <UserProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <App />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </Router>
+    </UserProvider>
+  );
+};
+
+const ProtectedRoute = ({ children }) => {
+  const { token, loading } = useContext(UserContext);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!token) {
+    return <Navigate to="/login" />;
+  }
+
+  return children;
 };
 
 function App() {
@@ -33,8 +77,6 @@ function App() {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [currentDocId, setCurrentDocId] = useState(null);
-
-  // Search state
   const [showSearch, setShowSearch] = useState(false);
   const [searchLanguage, setSearchLanguage] = useState("");
   const [searchProject, setSearchProject] = useState("");
@@ -42,38 +84,51 @@ function App() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [stats, setStats] = useState([]);
 
+  const { token, user, logout } = useContext(UserContext);
   const API_URL = process.env.REACT_APP_API_URL;
 
-  // Load documentation history from database
+  // Create axios instance with token
+  // ✅ Memoize axiosInstance - only recreate when token/API_URL changes
+  const axiosInstance = useMemo(
+    () =>
+      axios.create({
+        baseURL: API_URL,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+    [API_URL, token], // Only recreate when these change
+  );
+
+  // Load history
   const loadHistory = useCallback(async () => {
     try {
       setLoadingHistory(true);
-      const response = await axios.get(`${API_URL}/api/docs`);
+      const response = await axiosInstance.get("/api/docs");
       setHistory(response.data.data || []);
     } catch (err) {
       console.error("Failed to load history:", err);
     } finally {
       setLoadingHistory(false);
     }
-  }, [API_URL]);
+  }, [axiosInstance]);
 
-  // Load stats (count by language)
+  // Load stats
   const loadStats = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/stats`);
+      const response = await axiosInstance.get("/api/stats");
       setStats(response.data.data || []);
     } catch (err) {
       console.error("Failed to load stats:", err);
     }
-  }, [API_URL]);
+  }, [axiosInstance]);
 
-  // Load history on component mount
   useEffect(() => {
     loadHistory();
     loadStats();
   }, [loadHistory, loadStats]);
 
-  // Search documentations
+  // Search
   const handleSearch = async (e) => {
     e.preventDefault();
     try {
@@ -85,7 +140,7 @@ function App() {
       if (searchProject) params.append("projectName", searchProject);
       params.append("limit", "20");
 
-      const response = await axios.get(`${API_URL}/api/search?${params}`);
+      const response = await axiosInstance.get(`/api/search?${params}`);
       setSearchResults(response.data.data || []);
     } catch (err) {
       setError("Failed to search");
@@ -94,7 +149,6 @@ function App() {
     }
   };
 
-  // Clear search
   const handleClearSearch = () => {
     setShowSearch(false);
     setSearchLanguage("");
@@ -102,10 +156,10 @@ function App() {
     setSearchResults([]);
   };
 
-  // Load a specific documentation from history
+  // Load from history
   const loadFromHistory = async (docId) => {
     try {
-      const response = await axios.get(`${API_URL}/api/docs/${docId}`);
+      const response = await axiosInstance.get(`/api/docs/${docId}`);
       const doc = response.data.data;
 
       setCode(doc.code);
@@ -125,29 +179,28 @@ function App() {
     }
   };
 
-  // Delete documentation from history
+  // Delete from history
   const deleteFromHistory = async (docId) => {
     try {
-      await axios.delete(`${API_URL}/api/docs/${docId}`);
+      await axiosInstance.delete(`/api/docs/${docId}`);
       setHistory(history.filter((h) => h._id !== docId));
       if (currentDocId === docId) {
         setCurrentDocId(null);
         setOutputs({ docs: "", comments: "", readme: "" });
       }
-      setError("");
       loadStats();
     } catch (err) {
       setError("Failed to delete documentation");
     }
   };
 
-  // Generate Documentation
+  // Generate docs
   const handleGenerateDocs = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await axios.post(`${API_URL}/api/generate-docs`, {
+      const response = await axiosInstance.post("/api/generate-docs", {
         code,
         language,
         projectName: projectName || "Untitled Project",
@@ -168,13 +221,13 @@ function App() {
     }
   };
 
-  // Generate Comments
+  // Generate comments
   const handleGenerateComments = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await axios.post(`${API_URL}/api/generate-comments`, {
+      const response = await axiosInstance.post("/api/generate-comments", {
         code,
         language,
       });
@@ -185,7 +238,7 @@ function App() {
       }));
 
       if (currentDocId) {
-        await axios.put(`${API_URL}/api/docs/${currentDocId}`, {
+        await axiosInstance.put(`/api/docs/${currentDocId}`, {
           comments: response.data.comments,
         });
       }
@@ -211,7 +264,7 @@ function App() {
         return;
       }
 
-      const response = await axios.post(`${API_URL}/api/generate-readme`, {
+      const response = await axiosInstance.post("/api/generate-readme", {
         code,
         language,
         projectName,
@@ -223,7 +276,7 @@ function App() {
       }));
 
       if (currentDocId) {
-        await axios.put(`${API_URL}/api/docs/${currentDocId}`, {
+        await axiosInstance.put(`/api/docs/${currentDocId}`, {
           readme: response.data.readme,
         });
       }
@@ -237,7 +290,7 @@ function App() {
     }
   };
 
-  // Copy to Clipboard
+  // Copy to clipboard
   const handleCopy = async () => {
     try {
       const textToCopy = outputs[activeTab];
@@ -249,7 +302,7 @@ function App() {
     }
   };
 
-  // Download as file
+  // Download file
   const handleDownload = () => {
     try {
       const textToDownload = outputs[activeTab];
@@ -284,7 +337,7 @@ function App() {
     ) {
       try {
         for (let doc of history) {
-          await axios.delete(`${API_URL}/api/docs/${doc._id}`);
+          await axiosInstance.delete(`/api/docs/${doc._id}`);
         }
         setHistory([]);
         setCurrentDocId(null);
@@ -296,14 +349,13 @@ function App() {
     }
   };
 
-  // Export all documentations as JSON
+  // Export all
   const handleExportAll = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/docs/export/json`, {
-        responseType: "blob", // Important: get binary data
+      const response = await axiosInstance.get("/api/docs/export/json", {
+        responseType: "blob",
       });
 
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
       link.href = url;
@@ -320,6 +372,7 @@ function App() {
     }
   };
 
+  // Rest of your JSX code stays the same...
   return (
     <div className="vs-code-container">
       {/* Activity Bar */}
@@ -352,11 +405,12 @@ function App() {
 
         {/* Workspace */}
         <div className="workspace">
-          {/* Left Sidebar - Explorer or Search */}
+          {/* Left Sidebar */}
           <div className="left-sidebar">
             {!showSearch ? (
               <>
                 <div className="sidebar-header">Explorer</div>
+
                 <div className="file-tree">
                   <div className="folder">▼ AI Doc Generator</div>
                   <div className="file active">📄 input.py</div>
@@ -367,6 +421,7 @@ function App() {
                 <div className="sidebar-header" style={{ marginTop: "20px" }}>
                   Settings
                 </div>
+
                 <label className="checkbox">
                   <input type="checkbox" defaultChecked />
                   <span>Dark Mode</span>
@@ -406,12 +461,9 @@ function App() {
                     <label>Project Name</label>
                     <input
                       type="text"
-                      placeholder="Search projects..."
                       value={searchProject}
-                      onChange={debounce(
-                        (e) => setSearchProject(e.target.value),
-                        300,
-                      )}
+                      onChange={(e) => setSearchProject(e.target.value)}
+                      placeholder="Search..."
                       className="search-input"
                     />
                   </div>
@@ -421,24 +473,23 @@ function App() {
                     className="search-btn"
                     disabled={loadingSearch}
                   >
-                    {loadingSearch ? "🔍 Searching..." : "🔍 Search"}
+                    {loadingSearch ? "Searching..." : "🔍 Search"}
                   </button>
                 </form>
 
-                {/* Stats */}
                 <div className="sidebar-header" style={{ marginTop: "20px" }}>
                   Stats
                 </div>
+
                 <div className="stats-list">
                   {stats.map((stat) => (
                     <div key={stat._id} className="stat-item">
-                      <span className="stat-lang">{stat._id}</span>
-                      <span className="stat-count">{stat.count}</span>
+                      <span>{stat._id}</span>
+                      <span>{stat.count}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Search Results */}
                 {searchResults.length > 0 && (
                   <>
                     <div
@@ -447,6 +498,7 @@ function App() {
                     >
                       Results ({searchResults.length})
                     </div>
+
                     <div className="search-results">
                       {searchResults.map((item) => (
                         <div
@@ -454,45 +506,36 @@ function App() {
                           className="search-result-item"
                           onClick={() => loadFromHistory(item._id)}
                         >
-                          <div className="result-name">{item.projectName}</div>
-                          <div className="result-lang">{item.language}</div>
+                          <div>{item.projectName}</div>
+                          <small>{item.language}</small>
                         </div>
                       ))}
                     </div>
                   </>
                 )}
-
-                {searchResults.length === 0 &&
-                  (searchLanguage || searchProject) &&
-                  !loadingSearch && (
-                    <div className="empty-search">
-                      <small>No results found</small>
-                    </div>
-                  )}
               </>
             )}
           </div>
 
-          {/* Center - Editor Area */}
+          {/* Editor */}
           <div className="editor-area">
-            {/* Editor Header */}
             <div className="editor-header">
               <div className="input-group">
                 <label>Project Name</label>
                 <input
-                  type="text"
-                  placeholder="e.g., UserAuthModule"
+                  className="input-field"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  className="input-field"
+                  placeholder="e.g. UserAuthModule"
                 />
               </div>
+
               <div className="input-group">
                 <label>Language</label>
                 <select
+                  className="input-field"
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  className="input-field"
                 >
                   <option value="python">🐍 Python</option>
                   <option value="javascript">🟨 JavaScript</option>
@@ -504,11 +547,10 @@ function App() {
               </div>
             </div>
 
-            {/* Split View */}
             <div className="split-view">
-              {/* Code Editor */}
               <div className="editor-pane">
                 <div className="pane-tab">📄 input.py</div>
+
                 <Editor
                   height="100%"
                   language={language}
@@ -522,70 +564,65 @@ function App() {
                     scrollBeyondLastLine: false,
                   }}
                 />
+
                 <div className="editor-status-bar">
                   <span>{language.toUpperCase()} • UTF-8 • LF</span>
                   <span>Ln 1, Col 1</span>
                 </div>
               </div>
 
-              {/* Output Panel */}
               <div className="output-pane">
                 <div className="pane-tab">📋 Documentation</div>
 
-                {/* Output Tabs */}
                 <div className="output-tabs">
                   <button
-                    className={`output-tab ${activeTab === "docs" ? "active" : ""}`}
+                    className={`output-tab ${
+                      activeTab === "docs" ? "active" : ""
+                    }`}
                     onClick={() => setActiveTab("docs")}
                   >
                     📋 Docs
                   </button>
+
                   <button
-                    className={`output-tab ${activeTab === "comments" ? "active" : ""}`}
+                    className={`output-tab ${
+                      activeTab === "comments" ? "active" : ""
+                    }`}
                     onClick={() => setActiveTab("comments")}
                   >
                     💬 Comments
                   </button>
+
                   <button
-                    className={`output-tab ${activeTab === "readme" ? "active" : ""}`}
+                    className={`output-tab ${
+                      activeTab === "readme" ? "active" : ""
+                    }`}
                     onClick={() => setActiveTab("readme")}
                   >
                     📄 README
                   </button>
                 </div>
 
-                {/* Output Content */}
                 <div className="output-content">
-                  {error && <div className="error-message">❌ {error}</div>}
+                  {error && <div className="error-message">{error}</div>}
 
-                  {loading && (
+                  {loading ? (
                     <div className="loading">
-                      <div className="spinner"></div>
                       <p>Generating...</p>
                     </div>
-                  )}
-
-                  {!loading && outputs[activeTab] && (
+                  ) : outputs[activeTab] ? (
                     <>
                       <div className="output-button-group">
-                        <button
-                          className={`copy-button ${copiedTab === activeTab ? "copied" : ""}`}
-                          onClick={handleCopy}
-                        >
-                          {copiedTab === activeTab ? "✓ Copied!" : "📋 Copy"}
+                        <button onClick={handleCopy}>
+                          {copiedTab === activeTab ? "✓ Copied" : "📋 Copy"}
                         </button>
-                        <button
-                          className="download-button"
-                          onClick={handleDownload}
-                        >
-                          ⬇️ Download
-                        </button>
+
+                        <button onClick={handleDownload}>⬇ Download</button>
                       </div>
+
                       <div className="output-text">{outputs[activeTab]}</div>
                     </>
-                  )}
-
-                  {!loading && !outputs[activeTab] && (
+                  ) : (
                     <div className="empty-state">
                       <p>No {activeTab} generated yet</p>
                       <small>Click a button below to generate</small>
@@ -595,80 +632,78 @@ function App() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="action-buttons">
               <button
-                onClick={handleGenerateDocs}
-                disabled={loading}
                 className="btn btn-primary"
-              >
-                {loading ? "Generating..." : "✨ Generate Docs"}
-              </button>
-              <button
-                onClick={handleGenerateComments}
                 disabled={loading}
+                onClick={handleGenerateDocs}
+              >
+                ✨ Generate Docs
+              </button>
+
+              <button
                 className="btn btn-secondary"
+                disabled={loading}
+                onClick={handleGenerateComments}
               >
                 💬 Add Comments
               </button>
+
               <button
-                onClick={handleGenerateREADME}
-                disabled={loading}
                 className="btn btn-secondary"
+                disabled={loading}
+                onClick={handleGenerateREADME}
               >
                 📖 Generate README
               </button>
             </div>
           </div>
 
-          {/* Right Sidebar - History */}
+          {/* History */}
           <div className="right-sidebar">
-            <div className="sidebar-header">
-              History ({history.length})
-              {loadingHistory && <span className="spinner-mini"></span>}
-            </div>
+            <div className="sidebar-header">History ({history.length})</div>
 
             <div className="history-items">
-              {history.length === 0 ? (
-                <div className="empty-history">
-                  <p>No history yet</p>
-                  <small>Generate documentation to see history</small>
-                </div>
-              ) : (
-                history.map((item) => (
+              {history.map((item) => (
+                <div
+                  key={item._id}
+                  className={`history-item ${
+                    currentDocId === item._id ? "active" : ""
+                  }`}
+                >
                   <div
-                    key={item._id}
-                    className={`history-item ${currentDocId === item._id ? "active" : ""}`}
+                    className="history-content"
+                    onClick={() => loadFromHistory(item._id)}
                   >
-                    <div
-                      className="history-content"
-                      onClick={() => loadFromHistory(item._id)}
-                    >
-                      <div className="history-name">
-                        {item.projectName || "Untitled"}
-                      </div>
-                      <div className="history-lang">{item.language}</div>
-                      <div className="history-date">
-                        {new Date(item.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteFromHistory(item._id);
-                      }}
-                      title="Delete"
-                    >
-                      🗑️
-                    </button>
+                    <div>{item.projectName || "Untitled Project"}</div>
+                    <small>{item.language}</small>
+                    <small>
+                      {new Date(item.createdAt).toLocaleDateString()}
+                    </small>
                   </div>
-                ))
-              )}
+
+                  <button
+                    className="delete-btn"
+                    onClick={() => deleteFromHistory(item._id)}
+                  >
+                    🗑️
+                  </button>
+                </div>
+              ))}
             </div>
 
             <div className="sidebar-header" style={{ marginTop: "20px" }}>
               Settings
+            </div>
+            <div className="sidebar-link">👤 {user?.name}</div>
+            <div
+              className="sidebar-link danger"
+              onClick={() => {
+                logout();
+                window.location.href = "/login";
+              }}
+            >
+              🚪 Logout
             </div>
             {history.length > 0 && (
               <>
@@ -688,7 +723,6 @@ function App() {
         </div>
       </div>
 
-      {/* Status Bar */}
       <div className="status-bar">
         <div>✓ Ready</div>
         <div>{language.toUpperCase()} • UTF-8</div>
@@ -697,4 +731,4 @@ function App() {
   );
 }
 
-export default App;
+export default RootApp;

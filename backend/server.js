@@ -4,27 +4,37 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const docsRoutes = require('./routes/docs');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
-// Middleware
-// Middleware - CORS for production
+// CORS Configuration
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://code-doc-generator-vert.vercel.app'  // Add this exact URL
+  'http://localhost',
+  'https://code-doc-generator-vert.vercel.app'
 ];
 
+// ✅ CORS MIDDLEWARE FIRST!
 app.use(cors({
   origin: function(origin, callback) {
+    console.log('Request origin:', origin);
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('CORS not allowed'));
     }
-  }
+  },
+  credentials: true
 }));
+
+// ✅ Body Parser SECOND
 app.use(express.json());
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ✅ Routes THIRD
+app.use('/api/auth', authRoutes);
+app.use('/api', docsRoutes);
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -39,9 +49,6 @@ app.get('/api/health', (req, res) => {
     status: 'ok'
   });
 });
-
-// API Routes
-app.use('/api', docsRoutes);
 
 // Basic route for testing
 app.get('/', (req, res) => {
