@@ -15,7 +15,30 @@ import {
 } from "react-router-dom";
 import { UserProvider, UserContext } from "./UserContext";
 import Login from "./pages/Login";
-import "./App.css";
+import "./App_Mobile_Optimized.css";
+
+// Suppress ResizeObserver warning
+const ignoreResizeObserverLoop = (e) => {
+  const resizeObserverErrDiv = document.getElementById(
+    "webpack-dev-server-client-overlay-div",
+  );
+  const resizeObserverErr = document.getElementById(
+    "webpack-dev-server-client-overlay",
+  );
+  if (
+    e.message === "ResizeObserver loop limit exceeded" ||
+    e.message ===
+      "ResizeObserver loop completed with undelivered notifications."
+  ) {
+    if (resizeObserverErrDiv) {
+      resizeObserverErrDiv.setAttribute("style", "display: none");
+    }
+    if (resizeObserverErr) {
+      resizeObserverErr.setAttribute("style", "display: none");
+    }
+  }
+};
+window.addEventListener("error", ignoreResizeObserverLoop);
 
 const debounce = (func, delay) => {
   let timeoutId;
@@ -91,15 +114,23 @@ function App() {
   const [showRightSidebar, setShowRightSidebar] = useState(false);
 
   useEffect(() => {
+    let debounceTimer;
+
     const handleResize = () => {
-      if (window.innerWidth >= 768) {
-        setShowLeftSidebar(false);
-        setShowRightSidebar(false);
-      }
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (window.innerWidth >= 768) {
+          setShowLeftSidebar(false);
+          setShowRightSidebar(false);
+        }
+      }, 250);
     };
 
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      clearTimeout(debounceTimer);
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
   // Create axios instance with token
   // ✅ Memoize axiosInstance - only recreate when token/API_URL changes
@@ -749,10 +780,10 @@ function App() {
         </div>
       </div>
 
-      <div className="status-bar">
+      {/* <div className="status-bar">
         <div>✓ Ready</div>
         <div>{language.toUpperCase()} • UTF-8</div>
-      </div>
+      </div> */}
     </div>
   );
 }
