@@ -1,35 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// POST: Google Login
 router.post('/google-login', async (req, res) => {
   try {
     const { googleToken } = req.body;
 
     if (!googleToken) {
-      return res.status(400).json({ error: 'Google token required' });
+      return res.status(400).json({ error: 'Google token is required' });
     }
 
-    // Verify Google token
     const ticket = await client.verifyIdToken({
       idToken: googleToken,
       audience: process.env.GOOGLE_CLIENT_ID
     });
 
-    const { sub: googleId, email, name, picture } = ticket.getPayload();
+    const payload = ticket.getPayload();
+    const { sub, email, name, picture } = payload;
 
-    // Find or create user
-    let user = await User.findOne({ googleId });
+    let user = await User.findOne({ googleId: sub });
 
     if (!user) {
-      // Create new user
       user = new User({
-        googleId,
+        googleId: sub,
         email,
         name,
         picture
@@ -37,9 +34,8 @@ router.post('/google-login', async (req, res) => {
       await user.save();
     }
 
-    // Create JWT token
     const token = jwt.sign(
-      { userId: user._id, email: user.email },
+      { userId: user._id },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -49,20 +45,15 @@ router.post('/google-login', async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
         email: user.email,
+        name: user.name,
         picture: user.picture
       }
     });
   } catch (error) {
     console.error('Auth error:', error);
-    res.status(401).json({ error: 'Authentication failed' });
+    res.status(500).json({ error: error.message });
   }
-});
-
-// POST: Logout (frontend just deletes token)
-router.post('/logout', (req, res) => {
-  res.json({ success: true, message: 'Logged out' });
 });
 
 module.exports = router;
