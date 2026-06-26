@@ -8,16 +8,14 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
-    unique: true,
-    lowercase: true
+    required: true
   },
   name: {
     type: String,
     required: true
   },
   picture: {
-    type: String  // Google profile picture URL
+    type: String
   },
   createdAt: {
     type: Date,
