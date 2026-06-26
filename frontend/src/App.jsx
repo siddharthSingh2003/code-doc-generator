@@ -87,6 +87,20 @@ function App() {
   const { token, user, logout } = useContext(UserContext);
   const API_URL = process.env.REACT_APP_API_URL;
 
+  const [showLeftSidebar, setShowLeftSidebar] = useState(false);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setShowLeftSidebar(false);
+        setShowRightSidebar(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   // Create axios instance with token
   // ✅ Memoize axiosInstance - only recreate when token/API_URL changes
   const axiosInstance = useMemo(
@@ -383,7 +397,10 @@ function App() {
         <div
           className="activity-icon"
           title="Search"
-          onClick={() => setShowSearch(!showSearch)}
+          onClick={() => {
+            setShowSearch(!showSearch);
+            setShowLeftSidebar(!showLeftSidebar);
+          }}
         >
           🔍
         </div>
@@ -406,7 +423,7 @@ function App() {
         {/* Workspace */}
         <div className="workspace">
           {/* Left Sidebar */}
-          <div className="left-sidebar">
+          <div className={`left-sidebar ${showLeftSidebar ? "open" : ""}`}>
             {!showSearch ? (
               <>
                 <div className="sidebar-header">Explorer</div>
@@ -660,7 +677,7 @@ function App() {
           </div>
 
           {/* History */}
-          <div className="right-sidebar">
+          <div className={`right-sidebar ${showRightSidebar ? "open" : ""}`}>
             <div className="sidebar-header">History ({history.length})</div>
 
             <div className="history-items">
@@ -695,6 +712,15 @@ function App() {
             <div className="sidebar-header" style={{ marginTop: "20px" }}>
               Settings
             </div>
+
+            <div
+              className="activity-icon"
+              title="History"
+              onClick={() => setShowRightSidebar(!showRightSidebar)}
+            >
+              📋
+            </div>
+
             <div className="sidebar-link">👤 {user?.name}</div>
             <div
               className="sidebar-link danger"
