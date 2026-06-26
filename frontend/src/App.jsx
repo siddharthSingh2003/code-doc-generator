@@ -446,10 +446,10 @@ function App() {
       {/* Main Container */}
       <div className="main-container">
         {/* Top Tabs */}
-        <div className="top-tabs">
+        {/* <div className="top-tabs">
           <div className="tab-item active">📄 input.py</div>
           <div className="tab-item">output.md</div>
-        </div>
+        </div> */}
 
         {/* Workspace */}
         <div className="workspace">
