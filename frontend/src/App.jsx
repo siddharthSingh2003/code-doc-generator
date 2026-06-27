@@ -40,13 +40,13 @@ const ignoreResizeObserverLoop = (e) => {
 };
 window.addEventListener("error", ignoreResizeObserverLoop);
 
-const debounce = (func, delay) => {
-  let timeoutId;
-  return (...args) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => func(...args), delay);
-  };
-};
+// const debounce = (func, delay) => {
+//   let timeoutId;
+//   return (...args) => {
+//     clearTimeout(timeoutId);
+//     timeoutId = setTimeout(() => func(...args), delay);
+//   };
+// };
 
 const RootApp = () => {
   return (
@@ -709,7 +709,10 @@ function App() {
 
           {/* History */}
           <div className={`right-sidebar ${showRightSidebar ? "open" : ""}`}>
-            <div className="sidebar-header">History ({history.length})</div>
+            <div className="sidebar-header">
+              History ({history.length})
+              {loadingHistory && <span className="spinner-mini"></span>}
+            </div>
 
             <div className="history-items">
               {history.map((item) => (
