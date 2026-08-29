@@ -5,6 +5,15 @@ import RootApp from './App';
 import reportWebVitals from './reportWebVitals';
 // import RootApp from './RootApp';
 
+const savedTheme = localStorage.getItem('theme');
+const initialTheme =
+  savedTheme === 'light' || savedTheme === 'dark'
+    ? savedTheme
+    : window.matchMedia?.('(prefers-color-scheme: light)').matches
+    ? 'light'
+    : 'dark';
+document.documentElement.setAttribute('data-theme', initialTheme);
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

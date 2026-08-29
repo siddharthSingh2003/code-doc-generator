@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useMemo,
+  useRef,
 } from "react";
 import Editor from "@monaco-editor/react";
 import axios from "axios";
@@ -39,6 +40,91 @@ const ignoreResizeObserverLoop = (e) => {
   }
 };
 window.addEventListener("error", ignoreResizeObserverLoop);
+
+const EXTENSION_LANGUAGE_MAP = {
+  py: "python",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  go: "go",
+  java: "java",
+  c: "cpp",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  h: "cpp",
+  hpp: "cpp",
+};
+
+const getLanguageFromFilename = (filename) => {
+  const ext = filename.split(".").pop().toLowerCase();
+  return EXTENSION_LANGUAGE_MAP[ext] || "javascript";
+};
+
+// Checked in priority order: most distinctive/rare markers first, so a
+// language never gets misdetected just because it shares common tokens
+// (e.g. TypeScript before JavaScript, since TS syntax can't appear in valid JS).
+const LANGUAGE_DETECTORS = [
+  {
+    lang: "go",
+    test: (c) => /^\s*package\s+\w+/m.test(c) && /\bfunc\s+\w*\s*\(/.test(c),
+  },
+  {
+    lang: "java",
+    test: (c) =>
+      /\bpublic\s+static\s+void\s+main\s*\(/.test(c) ||
+      (/\bpublic\s+class\s+\w+/.test(c) &&
+        /\bSystem\.out\.println\s*\(/.test(c)),
+  },
+  {
+    lang: "cpp",
+    test: (c) =>
+      /#include\s*<[\w.]+>/.test(c) &&
+      (/\bstd::/.test(c) ||
+        /\b(cout|cin)\b/.test(c) ||
+        /\bint\s+main\s*\(/.test(c)),
+  },
+  {
+    lang: "python",
+    test: (c) =>
+      /^\s*def\s+\w+\s*\(.*\)\s*:/m.test(c) ||
+      /^\s*(elif|except)\b.*:/m.test(c) ||
+      /^\s*from\s+\w+\s+import\b/m.test(c) ||
+      (/^\s*import\s+\w+/m.test(c) && /:\s*$/m.test(c)),
+  },
+  {
+    lang: "typescript",
+    test: (c) =>
+      /\binterface\s+\w+\s*{/.test(c) ||
+      /\benum\s+\w+\s*{/.test(c) ||
+      /:\s*(string|number|boolean|any|void|unknown)\b/.test(c) ||
+      (/\bclass\s+\w+/.test(c) && /\bimplements\s+\w+/.test(c)),
+  },
+  {
+    lang: "javascript",
+    test: (c) =>
+      /\bconsole\.log\s*\(/.test(c) ||
+      /^\s*(const|let|var)\s+\w+\s*=/m.test(c) ||
+      /=>/.test(c) ||
+      /\brequire\s*\(/.test(c) ||
+      /\bfunction\s+\w*\s*\(/.test(c),
+  },
+];
+
+const detectLanguageFromCode = (code) => {
+  if (!code || code.trim().length < 8) return null;
+  const match = LANGUAGE_DETECTORS.find(({ test }) => test(code));
+  return match ? match.lang : null;
+};
+
+const sortTreeChildren = (children) =>
+  Object.values(children).sort((a, b) => {
+    if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 
 // const debounce = (func, delay) => {
 //   let timeoutId;
@@ -113,13 +199,44 @@ function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(false);
   const [showRightSidebar, setShowRightSidebar] = useState(false);
 
+  const [fileTree, setFileTree] = useState(null);
+  const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [activeFilePath, setActiveFilePath] = useState(null);
+  const [activeFileName, setActiveFileName] = useState("");
+
+  const [isDesktop, setIsDesktop] = useState(
+    () => window.innerWidth >= 768,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState(300);
+  const [editorPaneRatio, setEditorPaneRatio] = useState(0.5);
+  const splitViewRef = useRef(null);
+
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia?.("(prefers-color-scheme: light)").matches
+      ? "light"
+      : "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
+
   useEffect(() => {
     let debounceTimer;
 
     const handleResize = () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        if (window.innerWidth >= 768) {
+        const desktop = window.innerWidth >= 768;
+        setIsDesktop(desktop);
+        if (desktop) {
           setShowLeftSidebar(false);
           setShowRightSidebar(false);
         }
@@ -394,27 +511,131 @@ function App() {
     }
   };
 
-  // Export all
-  const handleExportAll = async () => {
-    try {
-      const response = await axiosInstance.get("/api/docs/export/json", {
-        responseType: "blob",
-      });
+  // Build a nested tree from the flat FileList a folder upload produces
+  const handleFolderUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `documentation-export-${new Date().getTime()}.json`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setError("Failed to export all documentations");
+    const rootName = files[0].webkitRelativePath.split("/")[0];
+    const root = { name: rootName, type: "folder", children: {} };
+
+    for (const file of files) {
+      const parts = file.webkitRelativePath.split("/");
+      let node = root;
+      for (let i = 1; i < parts.length; i++) {
+        const part = parts[i];
+        const isFile = i === parts.length - 1;
+        if (isFile) {
+          node.children[part] = { name: part, type: "file", file };
+        } else {
+          if (!node.children[part]) {
+            node.children[part] = { name: part, type: "folder", children: {} };
+          }
+          node = node.children[part];
+        }
+      }
     }
+
+    setFileTree(root);
+    setExpandedFolders(new Set([rootName]));
+    setActiveFilePath(null);
+    setActiveFileName("");
+    e.target.value = "";
+  };
+
+  const toggleFolder = (path) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const handleOpenFile = async (node, path) => {
+    try {
+      const content = await node.file.text();
+      setCode(content);
+      setLanguage(getLanguageFromFilename(node.name));
+      setActiveFilePath(path);
+      setActiveFileName(node.name);
+    } catch (err) {
+      setError("Failed to read file");
+    }
+  };
+
+  const renderTreeNode = (node, path, depth) => {
+    if (node.type === "folder") {
+      const isExpanded = expandedFolders.has(path);
+      return (
+        <div key={path}>
+          <div
+            className="folder"
+            style={{ paddingLeft: `${8 + depth * 14}px` }}
+            onClick={() => toggleFolder(path)}
+          >
+            {isExpanded ? "▼" : "▶"} {node.name}
+          </div>
+          {isExpanded &&
+            sortTreeChildren(node.children).map((child) =>
+              renderTreeNode(child, `${path}/${child.name}`, depth + 1),
+            )}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={path}
+        className={`file ${activeFilePath === path ? "active" : ""}`}
+        style={{ paddingLeft: `${24 + depth * 14}px` }}
+        onClick={() => handleOpenFile(node, path)}
+      >
+        📄 {node.name}
+      </div>
+    );
+  };
+
+  // Drag-resize: left sidebar width
+  const handleSidebarResizeStart = (e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMouseMove = (moveEvent) => {
+      const delta = moveEvent.clientX - startX;
+      setSidebarWidth(Math.min(500, Math.max(180, startWidth + delta)));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
+  // Drag-resize: editor pane vs documentation pane
+  const handleSplitResizeStart = (e) => {
+    e.preventDefault();
+    const container = splitViewRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+
+    const onMouseMove = (moveEvent) => {
+      const ratio = (moveEvent.clientX - rect.left) / rect.width;
+      setEditorPaneRatio(Math.min(0.8, Math.max(0.2, ratio)));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
   };
 
   // Rest of your JSX code stays the same...
@@ -441,6 +662,26 @@ function App() {
         <div className="activity-icon" title="Settings">
           ⚙
         </div>
+        <div className="activity-icon activity-icon-bottom" title={user?.name || "Profile"}>
+          👤
+        </div>
+        <div
+          className="activity-icon danger"
+          title="Logout"
+          onClick={() => {
+            logout();
+            window.location.href = "/login";
+          }}
+        >
+          🚪
+        </div>
+        <div
+          className="activity-icon"
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? "☀️" : "🌙"}
+        </div>
       </div>
 
       {/* Main Container */}
@@ -454,26 +695,39 @@ function App() {
         {/* Workspace */}
         <div className="workspace">
           {/* Left Sidebar */}
-          <div className={`left-sidebar ${showLeftSidebar ? "open" : ""}`}>
+          <div
+            className={`left-sidebar ${showLeftSidebar ? "open" : ""}`}
+            style={isDesktop ? { width: sidebarWidth } : undefined}
+          >
             {!showSearch ? (
               <>
-                <div className="sidebar-header">Explorer</div>
+                <div className="sidebar-header">
+                  Explorer
+                  <label
+                    className="close-search-btn upload-folder-btn"
+                    title="Upload Project Folder"
+                  >
+                    📂
+                    <input
+                      type="file"
+                      webkitdirectory="true"
+                      directory=""
+                      multiple
+                      onChange={handleFolderUpload}
+                    />
+                  </label>
+                </div>
 
                 <div className="file-tree">
-                  <div className="folder">▼ AI Doc Generator</div>
-                  <div className="file active">📄 input.py</div>
-                  <div className="file">📄 output.md</div>
-                  <div className="file">📄 README.md</div>
+                  {fileTree ? (
+                    renderTreeNode(fileTree, fileTree.name, 0)
+                  ) : (
+                    <div className="empty-tree">
+                      <p>No folder opened</p>
+                      <small>Click 📂 above to upload a project folder</small>
+                    </div>
+                  )}
                 </div>
-
-                <div className="sidebar-header" style={{ marginTop: "20px" }}>
-                  Settings
-                </div>
-
-                <label className="checkbox">
-                  <input type="checkbox" defaultChecked />
-                  <span>Dark Mode</span>
-                </label>
               </>
             ) : (
               <>
@@ -565,6 +819,13 @@ function App() {
             )}
           </div>
 
+          {isDesktop && (
+            <div
+              className="resize-handle"
+              onMouseDown={handleSidebarResizeStart}
+            />
+          )}
+
           {/* Editor */}
           <div className="editor-area">
             <div className="editor-header">
@@ -595,16 +856,30 @@ function App() {
               </div>
             </div>
 
-            <div className="split-view">
-              <div className="editor-pane">
-                <div className="pane-tab">📄 input.py</div>
+            <div className="split-view" ref={splitViewRef}>
+              <div
+                className="editor-pane"
+                style={
+                  isDesktop
+                    ? { flex: `0 0 calc(${editorPaneRatio * 100}% - 3px)` }
+                    : undefined
+                }
+              >
+                <div className="pane-tab">📄 {activeFileName || "input.py"}</div>
 
                 <Editor
                   height="100%"
                   language={language}
                   value={code}
-                  onChange={(value) => setCode(value || "")}
-                  theme="vs-dark"
+                  onChange={(value) => {
+                    const newCode = value || "";
+                    setCode(newCode);
+                    const detected = detectLanguageFromCode(newCode);
+                    if (detected && detected !== language) {
+                      setLanguage(detected);
+                    }
+                  }}
+                  theme={theme === "dark" ? "vs-dark" : "light"}
                   options={{
                     minimap: { enabled: false },
                     fontSize: 13,
@@ -619,7 +894,17 @@ function App() {
                 </div>
               </div>
 
-              <div className="output-pane">
+              {isDesktop && (
+                <div
+                  className="resize-handle"
+                  onMouseDown={handleSplitResizeStart}
+                />
+              )}
+
+              <div
+                className="output-pane"
+                style={isDesktop ? { flex: 1 } : undefined}
+              >
                 <div className="pane-tab">📋 Documentation</div>
 
                 <div className="output-tabs">
@@ -712,6 +997,14 @@ function App() {
             <div className="sidebar-header">
               History ({history.length})
               {loadingHistory && <span className="spinner-mini"></span>}
+              {history.length > 0 && (
+                <button
+                  className="close-search-btn clear-all-btn"
+                  onClick={handleClearHistory}
+                >
+                  Clear All
+                </button>
+              )}
             </div>
 
             <div className="history-items">
@@ -742,43 +1035,6 @@ function App() {
                 </div>
               ))}
             </div>
-
-            <div className="sidebar-header" style={{ marginTop: "20px" }}>
-              Settings
-            </div>
-
-            <div
-              className="activity-icon"
-              title="History"
-              onClick={() => setShowRightSidebar(!showRightSidebar)}
-            >
-              📋
-            </div>
-
-            <div className="sidebar-link">👤 {user?.name}</div>
-            <div
-              className="sidebar-link danger"
-              onClick={() => {
-                logout();
-                window.location.href = "/login";
-              }}
-            >
-              🚪 Logout
-            </div>
-            {history.length > 0 && (
-              <>
-                <div className="sidebar-link" onClick={handleExportAll}>
-                  📥 Export All as JSON
-                </div>
-                <div
-                  className="sidebar-link danger"
-                  onClick={handleClearHistory}
-                >
-                  🗑️ Clear All History
-                </div>
-              </>
-            )}
-            <div className="sidebar-link">⚙️ Preferences</div>
           </div>
         </div>
       </div>
