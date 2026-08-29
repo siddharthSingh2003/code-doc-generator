@@ -554,6 +554,24 @@ function App() {
     e.target.value = "";
   };
 
+  // Add one or more loose files (no folder structure) into the tree,
+  // merging them into the existing root if one is already open
+  const handleFilesUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const rootName = fileTree ? fileTree.name : "My Files";
+    const newChildren = fileTree ? { ...fileTree.children } : {};
+
+    for (const file of files) {
+      newChildren[file.name] = { name: file.name, type: "file", file };
+    }
+
+    setFileTree({ name: rootName, type: "folder", children: newChildren });
+    setExpandedFolders((prev) => new Set(prev).add(rootName));
+    e.target.value = "";
+  };
+
   // Remove a folder (and everything under it) from the uploaded file tree
   const deleteFolder = (e, path, name) => {
     e.stopPropagation();
@@ -764,19 +782,32 @@ function App() {
               <>
                 <div className="sidebar-header">
                   Explorer
-                  <label
-                    className="close-search-btn upload-folder-btn"
-                    title="Upload Project Folder"
-                  >
-                    📂
-                    <input
-                      type="file"
-                      webkitdirectory="true"
-                      directory=""
-                      multiple
-                      onChange={handleFolderUpload}
-                    />
-                  </label>
+                  <div className="sidebar-header-actions">
+                    <label
+                      className="close-search-btn upload-folder-btn"
+                      title="Upload File(s)"
+                    >
+                      📄
+                      <input
+                        type="file"
+                        multiple
+                        onChange={handleFilesUpload}
+                      />
+                    </label>
+                    <label
+                      className="close-search-btn upload-folder-btn"
+                      title="Upload Project Folder"
+                    >
+                      📂
+                      <input
+                        type="file"
+                        webkitdirectory="true"
+                        directory=""
+                        multiple
+                        onChange={handleFolderUpload}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 <div className="file-tree">
@@ -785,7 +816,7 @@ function App() {
                   ) : (
                     <div className="empty-tree">
                       <p>No folder opened</p>
-                      <small>Click 📂 above to upload a project folder</small>
+                      <small>Click 📄 to upload files or 📂 to upload a folder</small>
                     </div>
                   )}
                 </div>

@@ -260,6 +260,12 @@ html, body {
   border-radius: 4px;
 }
 
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .upload-folder-btn {
   position: relative;
   cursor: pointer;
