@@ -5,7 +5,7 @@
 ![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react)
 ![Node.js](https://img.shields.io/badge/Node.js-Express-339933?logo=node.js)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-13AA52?logo=mongodb)
-![Deployed](https://img.shields.io/badge/Deployed-Railway+Vercel-blue)
+![Deployed](https://img.shields.io/badge/Deployed-Render+Vercel-blue)
 
 🚀 **Live Demo:** [code-doc-generator-vert.vercel.app](https://code-doc-generator-vert.vercel.app)
 
@@ -16,14 +16,14 @@
 - 📱 Responsive mobile-first UI (VS Code inspired)
 - 🔍 Advanced search, filtering, and statistics
 - 📊 MongoDB aggregation pipelines for analytics
-- 🚀 Production deployment with Railway + Vercel
+- 🚀 Production deployment with Render + Vercel
 
 ### Tech Stack
 
 **Frontend:** React 18, Monaco Editor, React Router, Axios, CSS3
 **Backend:** Node.js, Express.js, Google OAuth 2.0, JWT
 **Database:** MongoDB, Mongoose
-**Deployment:** Railway, Vercel, MongoDB Atlas
+**Deployment:** Render, Vercel, MongoDB Atlas
 
 ### Key Achievements
 
