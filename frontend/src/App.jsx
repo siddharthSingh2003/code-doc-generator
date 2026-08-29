@@ -251,16 +251,27 @@ function App() {
   }, []);
   // Create axios instance with token
   // ✅ Memoize axiosInstance - only recreate when token/API_URL changes
-  const axiosInstance = useMemo(
-    () =>
-      axios.create({
-        baseURL: API_URL,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }),
-    [API_URL, token], // Only recreate when these change
-  );
+  const axiosInstance = useMemo(() => {
+    const instance = axios.create({
+      baseURL: API_URL,
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    instance.interceptors.response.use(
+      (response) => response,
+      (err) => {
+        if (err.response?.status === 401) {
+          logout();
+          window.location.href = "/login";
+        }
+        return Promise.reject(err);
+      },
+    );
+
+    return instance;
+  }, [API_URL, token, logout]); // Only recreate when these change
 
   // Load history
   const loadHistory = useCallback(async () => {
