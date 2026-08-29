@@ -12,7 +12,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost',
-  'https://code-doc-generator-vert.vercel.app',
+  
   'https://code-doc-generator-gbwi.onrender.com'
 ];
 
