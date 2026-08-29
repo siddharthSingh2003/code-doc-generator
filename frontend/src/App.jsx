@@ -554,6 +554,47 @@ function App() {
     e.target.value = "";
   };
 
+  // Remove a folder (and everything under it) from the uploaded file tree
+  const deleteFolder = (e, path, name) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete folder "${name}" and all its contents?`)) {
+      return;
+    }
+
+    setFileTree((prevRoot) => {
+      if (!prevRoot) return prevRoot;
+      if (path === prevRoot.name) return null;
+
+      const segments = path.split("/").slice(1);
+      const newRoot = { ...prevRoot, children: { ...prevRoot.children } };
+      let node = newRoot;
+      for (let i = 0; i < segments.length - 1; i++) {
+        const seg = segments[i];
+        const child = node.children[seg];
+        if (!child) return prevRoot;
+        const newChild = { ...child, children: { ...child.children } };
+        node.children[seg] = newChild;
+        node = newChild;
+      }
+      delete node.children[segments[segments.length - 1]];
+      return newRoot;
+    });
+
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      next.delete(path);
+      for (const p of prev) {
+        if (p.startsWith(`${path}/`)) next.delete(p);
+      }
+      return next;
+    });
+
+    if (activeFilePath === path || activeFilePath?.startsWith(`${path}/`)) {
+      setActiveFilePath(null);
+      setActiveFileName("");
+    }
+  };
+
   const toggleFolder = (path) => {
     setExpandedFolders((prev) => {
       const next = new Set(prev);
@@ -588,7 +629,16 @@ function App() {
             style={{ paddingLeft: `${8 + depth * 14}px` }}
             onClick={() => toggleFolder(path)}
           >
-            {isExpanded ? "▼" : "▶"} {node.name}
+            <span>
+              {isExpanded ? "▼" : "▶"} {node.name}
+            </span>
+            <button
+              className="delete-btn folder-delete-btn"
+              title="Delete folder"
+              onClick={(e) => deleteFolder(e, path, node.name)}
+            >
+              🗑️
+            </button>
           </div>
           {isExpanded &&
             sortTreeChildren(node.children).map((child) =>

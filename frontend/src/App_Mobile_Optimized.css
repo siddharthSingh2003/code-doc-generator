@@ -230,7 +230,6 @@ html, body {
   padding: 8px 10px;
 }
 
-.file-tree .folder,
 .file-tree .file {
   padding: 8px 12px;
   cursor: pointer;
@@ -238,6 +237,21 @@ html, body {
   color: var(--text-secondary);
   display: block;
   margin: 2px 0;
+}
+
+.file-tree .folder {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 0;
+}
+
+.folder-delete-btn {
+  flex-shrink: 0;
 }
 
 .file-tree .file.active {
